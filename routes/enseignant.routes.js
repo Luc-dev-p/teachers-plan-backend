@@ -1,44 +1,123 @@
-import { Router } from 'express';
-import * as ctrl from '../controllers/enseignant.controller.js';
-import { authMiddleware } from '../middlewares/auth.middleware.js';
-import { roleMiddleware } from '../middlewares/role.middleware.js';
-import { auditMiddleware } from '../middlewares/audit.middleware.js';
+import express from 'express';
+import pool from '../config/db.js';
 
-export const router = Router();
-router.use(authMiddleware);
+const router = express.Router();
 
-// Enseignants
-router.get('/', ctrl.listerEnseignants);
-router.post('/', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.creerEnseignant);
-router.put('/:id', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.modifierEnseignant);
-router.delete('/:id', roleMiddleware('admin'), auditMiddleware, ctrl.supprimerEnseignant);
+// GET /api/enseignants
+router.get('/', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT e.*, u.nom, u.prenom, u.email, d.nom as departement_nom
+       FROM enseignants e
+       JOIN utilisateurs u ON e.utilisateur_id = u.id
+       LEFT JOIN departements d ON e.departement_id = d.id
+       ORDER BY u.nom ASC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erreur enseignants:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
 
-// Départements
-router.get('/departements', ctrl.listerDepartements);
-router.post('/departements', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.creerDepartement);
-router.put('/departements/:id', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.modifierDepartement);
-router.delete('/departements/:id', roleMiddleware('admin'), auditMiddleware, ctrl.supprimerDepartement);
+// GET /api/enseignants/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT e.*, u.nom, u.prenom, u.email, d.nom as departement_nom
+       FROM enseignants e
+       JOIN utilisateurs u ON e.utilisateur_id = u.id
+       LEFT JOIN departements d ON e.departement_id = d.id
+       WHERE e.id = $1`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Enseignant non trouvé' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erreur enseignant:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
 
-// Filières
-router.get('/filieres', ctrl.listerFilieres);
-router.post('/filieres', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.creerFiliere);
-router.put('/filieres/:id', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.modifierFiliere);
-router.delete('/filieres/:id', roleMiddleware('admin'), auditMiddleware, ctrl.supprimerFiliere);
+// POST /api/enseignants
+router.post('/', async (req, res) => {
+  try {
+    const { matricule, utilisateur_id, departement_id, telephone, date_naissance, categorie, grade } = req.body;
 
-// Niveaux
-router.get('/niveaux', ctrl.listerNiveaux);
-router.post('/niveaux', roleMiddleware('admin'), auditMiddleware, ctrl.creerNiveau);
-router.put('/niveaux/:id', roleMiddleware('admin'), auditMiddleware, ctrl.modifierNiveau);
-router.delete('/niveaux/:id', roleMiddleware('admin'), auditMiddleware, ctrl.supprimerNiveau);
+    const result = await pool.query(
+      `INSERT INTO enseignants (matricule, utilisateur_id, departement_id, telephone, date_naissance, categorie, grade)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [matricule, utilisateur_id, departement_id, telephone, date_naissance, categorie || 'Vacataire', grade]
+    );
 
-// Classes
-router.get('/classes', ctrl.listerClasses);
-router.post('/classes', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.creerClasse);
-router.put('/classes/:id', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.modifierClasse);
-router.delete('/classes/:id', roleMiddleware('admin'), auditMiddleware, ctrl.supprimerClasse);
+    const enseignant = result.rows[0];
+    const userResult = await pool.query(
+      'SELECT nom, prenom, email FROM utilisateurs WHERE id = $1',
+      [utilisateur_id]
+    );
 
-// Salles
-router.get('/salles', ctrl.listerSalles);
-router.post('/salles', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.creerSalle);
-router.put('/salles/:id', roleMiddleware('admin', 'rh'), auditMiddleware, ctrl.modifierSalle);
-router.delete('/salles/:id', roleMiddleware('admin'), auditMiddleware, ctrl.supprimerSalle);
+    res.status(201).json({ ...enseignant, ...userResult.rows[0] });
+  } catch (error) {
+    console.error('Erreur création enseignant:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/enseignants/:id
+router.put('/:id', async (req, res) => {
+  try {
+    const { departement_id, telephone, date_naissance, categorie, grade, statut } = req.body;
+    const result = await pool.query(
+      `UPDATE enseignants 
+       SET departement_id = $1, telephone = $2, date_naissance = $3, categorie = $4, grade = $5, statut = $6, modifie_le = CURRENT_TIMESTAMP
+       WHERE id = $7
+       RETURNING *`,
+      [departement_id, telephone, date_naissance, categorie, grade, statut, req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Enseignant non trouvé' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erreur mise à jour enseignant:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/enseignants/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM enseignants WHERE id = $1 RETURNING *',
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Enseignant non trouvé' });
+    }
+    res.json({ message: 'Enseignant supprimé' });
+  } catch (error) {
+    console.error('Erreur suppression enseignant:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// GET /api/enseignants/:id/heures
+router.get('/:id/heures', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT he.* FROM heures_effectuees he
+       WHERE he.enseignant_id = $1
+       ORDER BY he.mois ASC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erreur heures enseignant:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+export { router };

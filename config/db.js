@@ -1,13 +1,11 @@
-import pkg from 'pg';
-const { Pool } = pkg;
-import 'dotenv/config';
+import { Pool } from 'pg';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-pool.on('error', (err) => {
-  console.error('Erreur PostgreSQL :', err.message);
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME || 'teachers_plan',
+  user: process.env.DB_USER || 'postgres',
+  password: String(process.env.DB_PASSWORD ?? ''),
 });
 
 export default pool;

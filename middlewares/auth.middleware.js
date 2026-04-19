@@ -1,17 +1,36 @@
-import { verifierToken } from '../config/auth.js';
+import jwt from 'jsonwebtoken';
 
-export const authMiddleware = (req, res, next) => {
+function verifierToken(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Porteur ')) {
-      return res.status(401).json({ succes: false, message: 'Token manquant' });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Token manquant' });
     }
 
     const token = authHeader.split(' ')[1];
-    const decode = verifierToken(token);
-    req.utilisateur = decode;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.utilisateur = decoded;
     next();
-  } catch (erreur) {
-    return res.status(401).json({ succes: false, message: 'Token invalide ou expiré' });
+  } catch (error) {
+    console.error('Erreur vérification token:', error);
+    res.status(401).json({ message: 'Token invalide' });
   }
-};
+}
+
+function verifierRole(...roles) {
+  return (req, res, next) => {
+    if (!req.utilisateur) {
+      return res.status(401).json({ message: 'Non authentifié' });
+    }
+    if (!roles.includes(req.utilisateur.role)) {
+      return res.status(403).json({ message: 'Accès refusé' });
+    }
+    next();
+  };
+}
+
+// Alias pour compatibilité avec les imports existants
+const authMiddleware = verifierToken;
+
+export { verifierToken, verifierRole, authMiddleware };

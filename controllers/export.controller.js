@@ -153,7 +153,7 @@ export const exportSeancesExcel = async (req, res) => {
 
     feuille.addRows(resultat.rows.map(r => ({
       ...r,
-      enseignant: `${r.prenom_enseignant} ${r.nom_enseignant}`,
+      enseignant: `${r.enseignant_prenom} ${r.enseignant_nom}`,
     })));
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
